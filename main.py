@@ -31,13 +31,15 @@ class Player(pygame.sprite.Sprite):
         self.image.fill(WHITE)
         self.rect = self.image.get_rect()
         self.rect.center = (WIDTH // 2, HEIGHT // 2)
-        self.speed = 10  # Augmenter la vitesse
+        self.speed = 20
         self.health = 100
-        self.direction = 'right'  # Direction initiale
+        self.max_health = 100
+        self.direction = 'right'
         self.weapon = Weapon(self)
         self.experience = 0
         self.max_experience = 100
         self.level = 1
+        self.upgrade_choice = None
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -66,11 +68,11 @@ class Player(pygame.sprite.Sprite):
     def take_damage(self, amount):
         self.health -= amount
         if self.health <= 0:
-            self.kill()  # Supprime le joueur s'il n'a plus de points de vie
+            self.kill()
 
     def draw_health_bar(self, screen):
         health_bar_length = 100
-        health_ratio = self.health / 100
+        health_ratio = self.health / self.max_health
         pygame.draw.rect(screen, RED, (10, 10, health_bar_length, 10))
         pygame.draw.rect(screen, GREEN, (10, 10, health_bar_length * health_ratio, 10))
 
@@ -83,13 +85,30 @@ class Player(pygame.sprite.Sprite):
     def level_up(self):
         self.experience -= self.max_experience
         self.level += 1
-        self.weapon.damage *= 3  # Doubler les dégâts
-        self.max_experience = int(self.max_experience * 1.2)  # Augmenter la quantité d'expérience nécessaire pour le prochain niveau
+        self.weapon.damage *= 2
+        self.max_experience = int(self.max_experience * 1.2)
+        self.upgrade_choice = True  # Indicate that level-up choices are available
+
+    def apply_upgrade(self, choice):
+        if choice == 'damage':
+            self.weapon.damage *= 1.5
+        elif choice == 'health':
+            self.max_health *= 1.5
+            self.health = self.max_health  # Restore full health
+        elif choice == 'speed':
+            self.speed *= 1.5
+        self.upgrade_choice = None  # Reset upgrade choice
 
     def draw_level(self, screen):
         font = pygame.font.Font(None, 36)
         level_text = font.render(f"Level: {self.level}", True, WHITE)
         screen.blit(level_text, (10, 50))
+
+    def draw_timer(self, screen, time_left):
+        font = pygame.font.Font(None, 36)
+        timer_text = font.render(f"Time Left: {time_left // 60}:{time_left % 60:02}", True, WHITE)
+        screen.blit(timer_text, (WIDTH - 200, 10))
+
 
 # Classe Ennemi
 class Enemy(pygame.sprite.Sprite):
@@ -99,30 +118,28 @@ class Enemy(pygame.sprite.Sprite):
         self.image.fill(RED)
         self.rect = self.image.get_rect()
         self.rect.center = (random.randint(0, WIDTH), random.randint(0, HEIGHT))
-        self.speed = 4  # Augmenter la vitesse
+        self.speed = 7
         self.health = 50
 
     def update(self):
-        # Mouvement vers le joueur
         dx, dy = player.rect.x - self.rect.x, player.rect.y - self.rect.y
         dist = math.hypot(dx, dy)
-        dx, dy = dx / dist, dy / dist  # Normalisation
+        dx, dy = dx / dist, dy / dist
         self.rect.x += dx * self.speed
         self.rect.y += dy * self.speed
 
     def take_damage(self, amount):
         self.health -= amount
         if self.health <= 0:
-            self.kill()  # Supprime l'ennemi s'il n'a plus de points de vie
-            global enemies_killed
-            enemies_killed += 1  # Augmenter le compteur d'ennemis tués
-            create_orb(self.rect.center)  # Créer une orbe à la position de l'ennemi
+            self.kill()
+            create_orb(self.rect.center)
 
     def draw_health_bar(self, screen):
         health_bar_length = 50
         health_ratio = self.health / 50
         pygame.draw.rect(screen, RED, (self.rect.x, self.rect.y - 10, health_bar_length, 5))
         pygame.draw.rect(screen, GREEN, (self.rect.x, self.rect.y - 10, health_bar_length * health_ratio, 5))
+
 
 # Classe Orbe
 class Orb(pygame.sprite.Sprite):
@@ -132,7 +149,8 @@ class Orb(pygame.sprite.Sprite):
         self.image.fill(BLUE)
         self.rect = self.image.get_rect()
         self.rect.center = pos
-        self.value = 10
+        self.value = 30
+
 
 # Classe Arme
 class Weapon(pygame.sprite.Sprite):
@@ -145,7 +163,6 @@ class Weapon(pygame.sprite.Sprite):
         self.damage = 10
 
     def update(self):
-        # Positionner l'épée en fonction de la direction du joueur
         if self.player.direction == 'right':
             self.image = pygame.transform.rotate(pygame.Surface((60, 20)), 0)
             self.image.fill(BLUE)
@@ -167,13 +184,13 @@ class Weapon(pygame.sprite.Sprite):
             self.rect = self.image.get_rect()
             self.rect.midtop = self.player.rect.midbottom
 
-        # Vérifier les collisions avec les ennemis
         hit_enemies = pygame.sprite.spritecollide(self, enemies, False)
         for enemy in hit_enemies:
             enemy.take_damage(self.damage)
 
     def draw(self, screen):
         screen.blit(self.image, self.rect)
+
 
 def draw_button(screen, text, pos, size):
     font = pygame.font.Font(None, size)
@@ -183,8 +200,9 @@ def draw_button(screen, text, pos, size):
     screen.blit(button_text, button_rect)
     return button_rect
 
+
 def reset_game():
-    global all_sprites, enemies, orbs, player, game_over, victory, enemies_killed, enemy_spawn_timer
+    global all_sprites, enemies, orbs, player, game_over, victory, start_ticks, enemy_spawn_timer
     all_sprites = pygame.sprite.Group()
     enemies = pygame.sprite.Group()
     orbs = pygame.sprite.Group()
@@ -193,21 +211,66 @@ def reset_game():
 
     game_over = False
     victory = False
-    enemies_killed = 0
+    start_ticks = pygame.time.get_ticks()  # Initialiser le temps de départ
     enemy_spawn_timer = pygame.USEREVENT + 1
-    pygame.time.set_timer(enemy_spawn_timer, 2000)  # Apparaître un ennemi toutes les 2 secondes
+    pygame.time.set_timer(enemy_spawn_timer, 2000)
+
 
 def create_enemy():
     enemy = Enemy()
     all_sprites.add(enemy)
     enemies.add(enemy)
 
+
 def create_orb(pos):
     orb = Orb(pos)
     all_sprites.add(orb)
     orbs.add(orb)
 
-# Initialisation des groupes de sprites et des variables de jeu
+
+def show_level_up_screen():
+    screen.fill(BLACK)
+    font = pygame.font.Font(None, 36)
+
+    # Définir les choix de bonus
+    choices = {
+        'damage': 'Increase Damage (1.5x)',
+        'health': 'Increase Health (1.5x)',
+        'speed': 'Increase Speed (1.5x)'
+    }
+
+    # Définir les positions des boutons
+    button_rects = {}
+    button_height = 50
+    start_y = HEIGHT // 2 - button_height
+
+    # Dessiner les boutons
+    for i, (key, text) in enumerate(choices.items()):
+        button_pos = (WIDTH // 2, start_y + i * button_height)
+        button_rect = draw_button(screen, text, button_pos, 36)
+        button_rects[key] = button_rect
+
+    pygame.display.flip()
+
+    # Attendre que le joueur fasse un choix
+    choice_made = False
+    while not choice_made:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                for key, rect in button_rects.items():
+                    if rect.collidepoint(mouse_pos):
+                        player.apply_upgrade(key)
+                        choice_made = True
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pygame.quit()
+                sys.exit()
+
+
+# Initialisation du jeu
 reset_game()
 
 # Boucle principale
@@ -237,34 +300,43 @@ while running:
             victory = False
             defeat_text = pygame.font.Font(None, 74).render("Defeat!", True, RED)
 
-        # Vérifier si le joueur a vaincu 20 ennemis
-        if enemies_killed >= 20:
+        # Vérifier si le joueur a survécu pendant 3 minutes
+        seconds = (pygame.time.get_ticks() - start_ticks) // 1000
+        if seconds >= 180:  # 3 minutes = 180 secondes
             game_over = True
             victory = True
             victory_text = pygame.font.Font(None, 74).render("Victory!", True, GREEN)
 
-        # Remplir l'écran avec une couleur
-        screen.fill(BLACK)
+        # Si le joueur est monté de niveau, afficher l'écran de montée de niveau
+        if player.upgrade_choice:
+            show_level_up_screen()
+            player.upgrade_choice = None  # Réinitialiser le choix de montée de niveau
+        else:
+            # Remplir l'écran avec une couleur
+            screen.fill(BLACK)
 
-        # Dessiner tous les sprites
-        all_sprites.draw(screen)
+            # Dessiner tous les sprites
+            all_sprites.draw(screen)
 
-        # Dessiner les barres de vie et d'expérience
-        player.draw_health_bar(screen)
-        player.draw_experience_bar(screen)
-        player.draw_level(screen)
-        for enemy in enemies:
-            enemy.draw_health_bar(screen)
+            # Dessiner les barres de vie et d'expérience
+            player.draw_health_bar(screen)
+            player.draw_experience_bar(screen)
+            player.draw_level(screen)
+            player.draw_timer(screen, 180 - seconds)  # Afficher le temps restant
+            for enemy in enemies:
+                enemy.draw_health_bar(screen)
 
-        # Dessiner l'arme
-        player.weapon.draw(screen)
+            # Dessiner l'arme
+            player.weapon.draw(screen)
     else:
         # Afficher l'écran de victoire ou de défaite
         screen.fill(BLACK)
         if victory:
-            screen.blit(victory_text, (WIDTH // 2 - victory_text.get_width() // 2, HEIGHT // 2 - victory_text.get_height() // 2 - 100))
+            screen.blit(victory_text, (
+                WIDTH // 2 - victory_text.get_width() // 2, HEIGHT // 2 - victory_text.get_height() // 2 - 100))
         else:
-            screen.blit(defeat_text, (WIDTH // 2 - defeat_text.get_width() // 2, HEIGHT // 2 - defeat_text.get_height() // 2 - 100))
+            screen.blit(defeat_text,
+                        (WIDTH // 2 - defeat_text.get_width() // 2, HEIGHT // 2 - defeat_text.get_height() // 2 - 100))
 
         restart_button = draw_button(screen, "Restart", (WIDTH // 2, HEIGHT // 2 + 50), 50)
 
