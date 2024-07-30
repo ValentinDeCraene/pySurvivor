@@ -1,1 +1,0 @@
-# Training repo for pyGame framework
