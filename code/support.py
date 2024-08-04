@@ -42,7 +42,8 @@ def import_folder(path):
                     image_surf = pygame.image.load(full_path).convert_alpha()
                     surface_list.append(image_surf)
                 except pygame.error as e:
-                    print(f"Failed to load image at {full_path}: {e}")
+                    pass
+                    # print(f"Failed to load image at {full_path}: {e}")
 
     if not surface_list:
         raise FileNotFoundError(f"No images found in the folder: {path}")
